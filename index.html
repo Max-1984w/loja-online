@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Loja</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#6b6b70;--card:#f5f5f7;--bd:#dcdce0;--ac:#b8326b}
+@media (prefers-color-scheme:dark){:root{--bg:#17171a;--fg:#f2f2f4;--mut:#a0a0a8;--card:#232327;--bd:#38383e;--ac:#e0568f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.aviso{background:var(--ac);color:#fff;text-align:center;padding:10px 14px;font-weight:600;font-size:14px}
+nav{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--bd);flex-wrap:wrap;align-items:center}
+nav b{margin-right:auto;font-size:18px}
+button,select,input,textarea{font:inherit;color:var(--fg)}
+button{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;cursor:pointer}
+button.p{background:var(--ac);border-color:var(--ac);color:#fff}button.on{border-color:var(--ac);color:var(--ac)}
+main{max-width:980px;margin:0 auto;padding:16px}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:9px;margin:4px 0 10px}
+label{font-size:13px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.card .b{padding:10px;display:flex;flex-direction:column;gap:6px;flex:1}
+.pr{font-weight:700;font-size:18px}.mut{color:var(--mut);font-size:13px}
+.row{display:flex;gap:6px;flex-wrap:wrap}.row>*{flex:1}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.modal{position:fixed;inset:0;background:#0008;display:flex;justify-content:center;overflow:auto;padding:16px}
+.modal>div{background:var(--bg);border-radius:12px;padding:16px;max-width:460px;width:100%;margin:auto}
+.err{color:#d33;font-size:13px;min-height:16px}
+.tag{display:inline-block;font-size:12px;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:1px 8px}
+.t{width:70px;height:70px;object-fit:cover;border-radius:8px}
+</style></head><body>
+<div class="aviso">vendemos para todo o Brasil com entregas a negociar pelo watzzap, compras feitas para fora do pais não seram reembolsadas</div>
+<nav><b>🛍️ Loja</b><button id="nl" class="on">Loja</button><button id="nm">Meus pedidos</button><button id="nv">Área do vendedor</button></nav>
+<main id="app"></main><div id="mod"></div>
+<script>
+const CL={roupas:'Roupas',bolsas:'Bolsas',cosmeticos:'Cosméticos',calcados:'Calçados',perfumes:'Perfumes'};
+const NEED={roupas:['tam'],calcados:['tam'],bolsas:[],perfumes:['nome'],cosmeticos:['nome']};
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const brl=v=>'R$ '+Number(v).toFixed(2).replace('.',',');
+const digits=s=>String(s||'').replace(/\D/g,'');
+// Fala com o servidor. Se der erro, lança a mensagem que o servidor mandou.
+async function api(url,method='GET',body){
+ const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ let d={};try{d=await r.json()}catch(e){}
+ if(!r.ok)throw new Error(d.erro||'Erro no servidor ('+r.status+')');
+ return d}
+function img(file,max=700){return new Promise((ok,no)=>{const r=new FileReader();r.onerror=no;r.onload=()=>{const i=new Image();i.onerror=no;i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.7))};i.src=r.result};r.readAsDataURL(file)})}
+let view='loja',cat='todas',ord='recentes',tab='prod',eu={};
+function go(v){view=v;['l','m','v'].forEach(k=>$('#n'+k).classList.toggle('on',v==={l:'loja',m:'meus',v:'vend'}[k]));draw()}
+$('#nl').onclick=()=>go('loja');$('#nm').onclick=()=>go('meus');$('#nv').onclick=()=>go('vend');
+async function draw(){try{await({loja:drawLoja,meus:drawMeus,vend:drawVend})[view]()}catch(e){app.innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+function card(p,buy,del){return `<div class="card"><img src="${p.foto}" alt=""><div class="b">${p.nome?`<b>${esc(p.nome)}</b>`:''}<span class="mut">${CL[p.classe]}${p.tamanho?' · Tam. '+esc(p.tamanho):''}</span><div>${esc(p.descricao)}</div><div class="pr">${brl(p.preco)}</div>${buy?`<div class="row"><button class="p" data-b="pix" data-id="${p.id}">Pagar via Pix</button><button class="p" data-b="cartao" data-id="${p.id}">Pagar via cartão</button></div>`:''}${del?`<button data-del="${p.id}">Excluir</button>`:''}</div></div>`}
+async function drawLoja(){
+ const l=await api('/api/produtos'+(cat=='todas'?'':'?classe='+cat));
+ app.innerHTML=`<div class="row" style="margin-bottom:14px">${['todas',...Object.keys(CL)].map(k=>`<button data-c="${k}" class="${cat==k?'on':''}" style="flex:0 0 auto">${k=='todas'?'Todas':CL[k]}</button>`).join('')}</div>`+(l.length?`<div class="grid">${l.map(p=>card(p,1)).join('')}</div>`:'<p class="mut">Nenhum produto cadastrado ainda.</p>');
+ app.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;draw()});
+ app.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>pedido(l.find(p=>p.id==b.dataset.id),b.dataset.b));
+}
+function pedido(p,m){
+ $('#mod').innerHTML=`<div class="modal"><div><h3 style="margin-top:0">Finalizar pedido</h3><div class="mut">${esc(p.nome||CL[p.classe])} · ${brl(p.preco)} · ${m=='pix'?'Pix':'Cartão'}</div><br>
+ <label>Nome completo</label><input id="f_n"><label>CEP</label><input id="f_cep" inputmode="numeric" maxlength="9"><label>Cidade</label><input id="f_ci"><label>Bairro</label><input id="f_ba"><label>Rua</label><input id="f_ru"><label>Número da casa</label><input id="f_nu"><label>Telefone com DDD</label><input id="f_te" inputmode="tel" placeholder="(85) 99999-9999"><label>Foto do comprovante de pagamento${m=='pix'?'':' (opcional)'}</label><input id="f_co" type="file" accept="image/*"><div class="err" id="er"></div>
+ <div class="row"><button id="x">Cancelar</button><button class="p" id="ok">Enviar pedido</button></div></div></div>`;
+ $('#x').onclick=()=>$('#mod').innerHTML='';
+ $('#ok').onclick=async()=>{
+  const v=i=>$('#f_'+i).value.trim(),er=t=>$('#er').textContent=t;er('');
+  try{
+   const f=$('#f_co').files[0],comp=f?await img(f,900):null;
+   await api('/api/pedidos','POST',{produto_id:p.id,metodo:m,nome:v('n'),cep:v('cep'),cidade:v('ci'),bairro:v('ba'),rua:v('ru'),numero:v('nu'),telefone:v('te'),comprovante:comp});
+   const s=await api('/api/config'),w=digits(s.whatsapp),msg=encodeURIComponent(`Olá! Fiz um pedido: ${p.nome||CL[p.classe]} (${brl(p.preco)}) via ${m}. Nome: ${v('n')}.`);
+   $('#mod').innerHTML=`<div class="modal"><div><h3 style="margin-top:0">Pedido enviado ✅</h3><p>O vendedor foi avisado. Combine a entrega ou retirada pelo WhatsApp.</p>${m=='pix'&&s.pix?`<p>Chave Pix: <b>${esc(s.pix)}</b></p>`:''}${w?`<a href="https://wa.me/55${w.replace(/^55/,'')}?text=${msg}" target="_blank" rel="noopener"><button class="p" style="width:100%">Falar com o vendedor no WhatsApp</button></a>`:'<p class="mut">O vendedor ainda não cadastrou o WhatsApp.</p>'}<br><br><button id="x" style="width:100%">Fechar</button></div></div>`;
+   $('#x').onclick=()=>{$('#mod').innerHTML='';go('meus')};
+  }catch(e){er(e.message)}
+ };
+}
+async function drawMeus(){
+ const o=await api('/api/meus-pedidos');
+ app.innerHTML=`<h3>Meus pedidos</h3><p class="mut">Mostra apenas os pedidos feitos neste navegador.</p>`+(o.length?o.map(x=>`<div class="box"><b>${esc(x.produto_nome)}</b> · ${brl(x.preco)} <span class="tag">${x.metodo}</span><br><span class="mut">${new Date(x.criado).toLocaleString('pt-BR')}</span></div>`).join(''):'<p class="mut">Você ainda não fez pedidos.</p>');
+}
+async function drawVend(){
+ eu=await api('/api/vendedor/eu');
+ if(!eu.existe)return cadastro();
+ if(!eu.logado)return entrar();
+ app.innerHTML=`<div class="row" style="margin-bottom:14px">${[['prod','Produtos'],['ped','Pedidos'],['cfg','Pix e WhatsApp']].map(([k,n])=>`<button data-t="${k}" class="${tab==k?'on':''}">${n}</button>`).join('')}<button id="sair">Sair</button></div><div id="tb"></div>`;
+ app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;draw()});
+ $('#sair').onclick=async()=>{await api('/api/vendedor/logout','POST');draw()};
+ await({prod:tProd,ped:tPed,cfg:tCfg})[tab]();
+}
+function cadastro(){
+ app.innerHTML=`<div class="box" style="max-width:420px"><h3 style="margin-top:0">Criar conta de vendedor</h3><label>E-mail</label><input id="e" type="email"><label>Senha</label><input id="s" type="password"><label>Confirmar senha</label><input id="s2" type="password"><label>CPF</label><input id="c" inputmode="numeric" placeholder="000.000.000-00"><div class="err" id="er"></div><button class="p" id="ok" style="width:100%">Criar conta</button></div>`;
+ $('#ok').onclick=async()=>{try{await api('/api/vendedor/cadastro','POST',{email:$('#e').value,senha:$('#s').value,confirmar:$('#s2').value,cpf:$('#c').value});draw()}catch(e){$('#er').textContent=e.message}};
+}
+function entrar(){
+ app.innerHTML=`<div class="box" style="max-width:420px"><h3 style="margin-top:0">Entrar</h3><label>E-mail</label><input id="e"><label>Senha</label><input id="s" type="password"><div class="err" id="er"></div><button class="p" id="ok" style="width:100%">Entrar</button></div>`;
+ $('#ok').onclick=async()=>{try{await api('/api/vendedor/login','POST',{email:$('#e').value,senha:$('#s').value});draw()}catch(e){$('#er').textContent=e.message}};
+}
+async function tProd(){
+ const l=await api('/api/produtos');
+ $('#tb').innerHTML=`<div class="box"><h3 style="margin-top:0">Adicionar produto</h3><label>Classe</label><select id="cl">${Object.entries(CL).map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select><div id="ex"></div><label>Descrição</label><textarea id="d" rows="2"></textarea><label>Preço (R$)</label><input id="pr" inputmode="decimal"><label>Foto</label><input id="ft" type="file" accept="image/*"><div class="err" id="er"></div><button class="p" id="ok">Adicionar</button></div><div class="grid">${l.map(p=>card(p,0,1)).join('')}</div>`;
+ const ex=()=>{const n=NEED[$('#cl').value];$('#ex').innerHTML=(n.includes('nome')?'<label>Nome do produto</label><input id="nm">':'')+(n.includes('tam')?'<label>Tamanho</label><input id="tm">':'')};ex();$('#cl').onchange=ex;
+ $('#ok').onclick=async()=>{try{const f=$('#ft').files[0];if(!f)throw new Error('Adicione a foto.');
+  await api('/api/produtos','POST',{classe:$('#cl').value,nome:$('#nm')?.value,tamanho:$('#tm')?.value,descricao:$('#d').value,preco:parseFloat($('#pr').value.replace(',','.')),foto:await img(f)});draw()}catch(e){$('#er').textContent=e.message}};
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Excluir este produto?')){await api('/api/produtos/'+b.dataset.del,'DELETE');draw()}});
+}
+async function tPed(){
+ const o=await api('/api/vendedor/pedidos?ordem='+(ord=='recentes'?'recentes':'antigos'));
+ $('#tb').innerHTML=`<label>Ordenar</label><select id="od" style="max-width:220px"><option value="recentes">Mais recentes</option><option value="antigos">Mais antigos</option></select>`+(o.length?o.map(x=>`<div class="box"><div class="row" style="align-items:center">${x.comprovante?`<img class="t" src="${x.comprovante}" style="flex:0 0 70px" data-z="${x.id}" title="Comprovante">`:''}<div style="flex:3"><b>🔔 Venda: ${esc(x.produto_nome)}</b> · ${brl(x.preco)} <span class="tag">${x.metodo}</span><br><span class="mut">${new Date(x.criado).toLocaleString('pt-BR')}</span></div></div><p style="margin:8px 0 0"><b>${esc(x.nome)}</b> · <a href="https://wa.me/55${x.telefone.replace(/^55/,'')}" target="_blank" rel="noopener">${esc(x.telefone)}</a><br>${esc(x.rua)}, ${esc(x.numero)} — ${esc(x.bairro)}, ${esc(x.cidade)} · CEP ${esc(x.cep)}</p></div>`).join(''):'<p class="mut">Nenhum pedido ainda.</p>');
+ $('#od').value=ord;$('#od').onchange=e=>{ord=e.target.value;draw()};
+ document.querySelectorAll('[data-z]').forEach(i=>i.onclick=()=>{$('#mod').innerHTML=`<div class="modal"><div><img src="${i.src}" style="width:100%"><br><br><button id="x" style="width:100%">Fechar</button></div></div>`;$('#x').onclick=()=>$('#mod').innerHTML=''});
+}
+function tCfg(){
+ $('#tb').innerHTML=`<div class="box" style="max-width:420px"><label>Seu WhatsApp (com DDD)</label><input id="wa" inputmode="tel" value="${esc(eu.whatsapp)}"><label>Chave Pix</label><input id="px" value="${esc(eu.pix)}"><div class="err" id="er"></div><button class="p" id="ok">Salvar</button></div>`;
+ $('#ok').onclick=async()=>{try{await api('/api/vendedor/config','PUT',{whatsapp:$('#wa').value,pix:$('#px').value});$('#er').textContent='Salvo ✔'}catch(e){$('#er').textContent=e.message}};
+}
+draw();
+</script></body></html>
